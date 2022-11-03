@@ -1,0 +1,22 @@
+{
+  "name": "build-your-own-svelte",
+  "version": "1.0.0",
+  "description": "Following along with the tutorial [Build your own Svelte](https://www.youtube.com/watch?v=mwvyKGw2CzU&ab_channel=lihautan).",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^8.26.0"
+  },
+  "dependencies": {
+    "acorn": "^8.8.1",
+    "escodegen": "^2.0.0",
+    "estree-walker": "^3.0.1",
+    "periscopic": "^3.0.4"
+  }
+}
