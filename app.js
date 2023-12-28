@@ -28,7 +28,7 @@ export default function () {
         txt_3.data = counter;
       }
     },
-    destroy() {
+    destroy(target) {
       button_1.removeEventListener('click', decrement);
       target.removeChild(button_1);
       button_4.removeEventListener('click', increment);

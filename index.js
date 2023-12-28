@@ -374,7 +374,7 @@ function generate(ast, analysis) {
         update(changed) {
           ${code.update.join('\n')}
         },
-        destroy() {
+        destroy(target) {
           ${code.destroy.join('\n')}
         }
       }
