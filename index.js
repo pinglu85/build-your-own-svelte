@@ -37,7 +37,6 @@ function parse(content) {
 
     while (condition()) {
       const fragment = parseFragment();
-
       if (fragment) fragments.push(fragment);
     }
 
@@ -158,7 +157,7 @@ function parse(content) {
   function readWhileWatching(regex) {
     let startIndex = i;
 
-    while (regex.test(content[i])) {
+    while (i < content.length && regex.test(content[i])) {
       i++;
     }
 
