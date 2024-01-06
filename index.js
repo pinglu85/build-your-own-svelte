@@ -190,10 +190,18 @@ function analyze(ast) {
       // We mark the variable as 'willChange' only if it is declared in the root
       // scope.
       if (
-        node.type === 'UpdateExpression' &&
-        currentScope.find_owner(node.argument.name) === rootScope
+        node.type === 'UpdateExpression' ||
+        node.type === 'AssignmentExpression'
       ) {
-        result.willChange.add(node.argument.name);
+        const names = periscopic.extract_names(
+          node.type === 'UpdateExpression' ? node.argument : node.left
+        );
+
+        for (const name of names) {
+          if (currentScope.find_owner(name) === rootScope) {
+            result.willChange.add(name);
+          }
+        }
       }
     },
 
@@ -223,9 +231,9 @@ function analyze(ast) {
         result.willUseInTemplate.add(fragment.value.name);
         break;
       case 'Expression':
-        // We assume it is a normal variable, not a member expression, i.e
-        // a.b
-        result.willUseInTemplate.add(fragment.expression.name);
+        extractNames(fragment.expression).forEach((name) => {
+          result.willUseInTemplate.add(name);
+        });
         break;
       default:
       // do nothing
@@ -299,19 +307,31 @@ function generate(ast, analysis) {
 
       case 'Expression': {
         const variableName = `txt_${counter++}`;
-        const expression = node.expression.name;
+        // Use `escodegen` to convert Binary Expression into string.
+        const expressionStr = escodegen.generate(node.expression);
 
         code.variables.push(variableName);
 
         code.create.push(
-          `${variableName} = document.createTextNode(${expression})`
+          `${variableName} = document.createTextNode(${expressionStr})`
         );
 
         code.create.push(`${parent}.appendChild(${variableName})`);
 
-        if (analysis.willChange.has(expression)) {
-          code.update.push(`if (changed.includes('${expression}')) {
-            ${variableName}.data = ${expression};
+        const changes = new Set();
+        extractNames(node.expression).forEach((name) => {
+          if (analysis.willChange.has(name)) changes.add(name);
+        });
+
+        if (changes.size > 1) {
+          code.update.push(`if (${JSON.stringify([
+            ...changes,
+          ])}.some(name => changed.includes(name))) {
+            ${variableName}.data = ${expressionStr};
+          }`);
+        } else if (changes.size === 1) {
+          code.update.push(`if (changed.includes('${[...changes][0]}')) {
+            ${variableName}.data = ${expressionStr};
           }`);
         }
       }
@@ -333,24 +353,35 @@ function generate(ast, analysis) {
       if (map.has(node)) currentScope = map.get(node);
 
       if (
-        node.type === 'UpdateExpression' &&
-        currentScope.find_owner(node.argument.name) === rootScope &&
-        analysis.willUseInTemplate.has(node.argument.name)
+        node.type === 'UpdateExpression' ||
+        node.type === 'AssignmentExpression'
       ) {
-        this.replace({
-          type: 'SequenceExpression',
-          expressions: [
-            node,
-            acorn.parseExpressionAt(
-              `lifeCycle.update(['${node.argument.name}'])`,
-              0,
-              {
-                ecmaVersion: 2022,
-              }
-            ),
-          ],
-        });
-        this.skip();
+        const names = periscopic
+          .extract_names(
+            node.type === 'UpdateExpression' ? node.argument : node.left
+          )
+          .filter(
+            (name) =>
+              currentScope.find_owner(name) === rootScope &&
+              analysis.willUseInTemplate.has(name)
+          );
+
+        if (names.length > 0) {
+          this.replace({
+            type: 'SequenceExpression',
+            expressions: [
+              node,
+              acorn.parseExpressionAt(
+                `lifeCycle.update(${JSON.stringify(names)})`,
+                0,
+                {
+                  ecmaVersion: 2022,
+                }
+              ),
+            ],
+          });
+          this.skip();
+        }
       }
     },
 
@@ -381,4 +412,25 @@ function generate(ast, analysis) {
       return lifeCycle;
     }
   `;
+}
+
+function extractNames(jsNode, result = []) {
+  switch (jsNode.type) {
+    case 'Identifier':
+      result.push(jsNode.name);
+      break;
+    case 'BinaryExpression':
+      extractNames(jsNode.left, result);
+      extractNames(jsNode.right, result);
+      break;
+    case 'CallExpression':
+      for (const argument of jsNode.arguments) {
+        extractNames(argument, result);
+      }
+      break;
+    default:
+    // do nothing
+  }
+
+  return result;
 }

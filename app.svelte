@@ -1,9 +1,21 @@
 <script>
   let counter = 0;
-  const increment = () => counter++;
-  const decrement = () => counter--;
+  let double = 2;
+  const increment = () => {
+    counter += 1;
+    double += 2;
+  };
+  const decrement = () => {
+    counter--;
+    double = counter * 2;
+  };
+
+  function foo(value) {
+    return value;
+  }
 </script>
 
 <button on:click={decrement}>Decrement</button>
-{counter}
+<div>{counter} * {2} = {foo(counter * 2)}</div>
+<div>double = {double}</div>
 <button on:click={increment}>Increment</button>
