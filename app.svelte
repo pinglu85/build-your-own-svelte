@@ -1,21 +1,19 @@
 <script>
-  let counter = 0;
-  let double = 2;
-  const increment = () => {
-    counter += 1;
-    double += 2;
-  };
-  const decrement = () => {
-    counter--;
-    double = counter * 2;
-  };
+  let counter = 5;
+  let foo = 5;
+  const increment = () => counter++;
+  const decrement = () => counter--;
+  const incrementFoo = () => foo++;
 
-  function foo(value) {
-    return value;
-  }
+  $: quadruple = double * 2;
+  $: double = counter * 2 + bar;
+
+  $: bar = foo + 5;
 </script>
 
 <button on:click={decrement}>Decrement</button>
-<div>{counter} * {2} = {foo(counter * 2)}</div>
-<div>double = {double}</div>
+<div>{counter} * 2 = {double}</div>
+<div>{double} * 2 = {quadruple}</div>
+<div>foo = {foo}</div>
 <button on:click={increment}>Increment</button>
+<button on:click={incrementFoo}>Increment Foo</button>

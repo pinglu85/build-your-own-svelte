@@ -174,12 +174,43 @@ function analyze(ast) {
     variables: new Set(),
     willChange: new Set(),
     willUseInTemplate: new Set(),
+    reactiveDeclarations: [],
   };
 
   const { scope: rootScope, map } = periscopic.analyze(ast.script);
   result.variables = new Set(rootScope.declarations.keys());
   result.rootScope = rootScope;
   result.map = map;
+
+  const toRemoves = new Set();
+
+  ast.script.body.forEach((node, index) => {
+    if (node.type === 'LabeledStatement' && node.label.name === '$') {
+      toRemoves.add(node);
+
+      const { body } = node;
+      // For now we assume reactive declarations are assignment expressions.
+      const { left, right } = body.expression;
+      result.willChange.add(left.name);
+
+      const dependencies = [];
+      estreeWalker.walk(right, {
+        enter(node) {
+          if (node.type === 'Identifier') dependencies.push(node.name);
+        },
+      });
+
+      const reactiveDeclaration = {
+        assignees: [left.name],
+        dependencies,
+        node: body,
+        index,
+      };
+
+      result.reactiveDeclarations.push(reactiveDeclaration);
+    }
+  });
+  ast.script.body = ast.script.body.filter((node) => !toRemoves.has(node));
 
   let currentScope = rootScope;
   estreeWalker.walk(ast.script, {
@@ -249,6 +280,7 @@ function generate(ast, analysis) {
     create: [],
     update: [],
     destroy: [],
+    reactiveDecorations: [],
   };
 
   let counter = 1;
@@ -371,13 +403,9 @@ function generate(ast, analysis) {
             type: 'SequenceExpression',
             expressions: [
               node,
-              acorn.parseExpressionAt(
-                `lifeCycle.update(${JSON.stringify(names)})`,
-                0,
-                {
-                  ecmaVersion: 2022,
-                }
-              ),
+              acorn.parseExpressionAt(`update(${JSON.stringify(names)})`, 0, {
+                ecmaVersion: 2022,
+              }),
             ],
           });
           this.skip();
@@ -390,6 +418,36 @@ function generate(ast, analysis) {
     },
   });
 
+  analysis.reactiveDeclarations.sort((rd1, rd2) => {
+    // rd2 depends on rd1, then rd2 should come after rd2.
+    if (rd1.assignees.some((assignee) => rd2.dependencies.includes(assignee))) {
+      return -1;
+    }
+
+    // rd1 depends on rd2, then rd1 should come after rd2.
+    if (rd2.assignees.some((assignee) => rd1.dependencies.includes(assignee))) {
+      return 1;
+    }
+
+    // Based on original order.
+    return rd1.index - rd2.index;
+  });
+
+  analysis.reactiveDeclarations.forEach(({ node, assignees, dependencies }) => {
+    code.reactiveDecorations.push(`
+        if (${JSON.stringify(
+          dependencies
+        )}.some((name) => changed.includes(name))) {
+          ${escodegen.generate(node)}
+          update(${JSON.stringify(assignees)});
+        }
+      `);
+
+    assignees.forEach((assignee) => {
+      code.variables.push(assignee);
+    });
+  });
+
   // We use `escodegen.generate()` to add code in `<script>` block to the
   // function.
   return `
@@ -397,16 +455,47 @@ function generate(ast, analysis) {
       ${escodegen.generate(ast.script)}
       ${code.variables.map((v) => `let ${v};`).join('\n')}
    
+      let isMounted = false;
+
       const lifeCycle = {
         create(target) {
           ${code.create.join('\n')}
+
+          isMounted = true;
         }, 
         update(changed) {
           ${code.update.join('\n')}
         },
         destroy(target) {
           ${code.destroy.join('\n')}
+
+          isMounted = false;
         }
+      }
+
+      let collectChanges = [];
+      let updateCalled = false;
+
+      function update(changed) {
+        changed.forEach((change) => {
+          collectChanges.push(change);
+        });
+
+        if (updateCalled) return;
+
+        updateCalled = true;
+
+        // Call once
+        updateReactiveDeclarations(collectChanges);
+        if (isMounted) lifeCycle.update(collectChanges);
+        updateCalled = false;
+        collectChanges = [];
+      }
+
+      update(${JSON.stringify([...analysis.willChange])});
+
+      function updateReactiveDeclarations(changed) {
+        ${code.reactiveDecorations.join('\n')}
       }
 
       return lifeCycle;
