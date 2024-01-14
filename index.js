@@ -4,14 +4,18 @@ import * as periscopic from 'periscopic';
 import * as estreeWalker from 'estree-walker';
 import * as escodegen from 'escodegen';
 
+const compileTarget = 'ssr';
 const content = fs.readFileSync('./app.svelte', 'utf-8');
 const ast = parse(content);
 const analysis = analyze(ast);
-const js = generate(ast, analysis);
+const js =
+  compileTarget === 'ssr'
+    ? generateSSR(ast, analysis)
+    : generate(ast, analysis);
 
 // console.log(analysis);
 // fs.writeFileSync('./app.json', JSON.stringify(ast, null, 2), 'utf-8');
-fs.writeFileSync('./app.js', js, 'utf-8');
+fs.writeFileSync('./ssr.js', js, 'utf-8');
 
 /**
  * Svelte Syntax
@@ -499,6 +503,116 @@ function generate(ast, analysis) {
       }
 
       return lifeCycle;
+    }
+  `;
+}
+
+function generateSSR(ast, analysis) {
+  const code = {
+    variables: [],
+    reactiveDecorations: [],
+    template: {
+      expressions: [],
+      quasis: [],
+    },
+  };
+
+  let templateStringArr = [];
+  function addString(str) {
+    templateStringArr.push(str);
+  }
+
+  function addExpressions(expression) {
+    code.template.quasis.push(templateStringArr.join(''));
+    templateStringArr = [];
+    code.template.expressions.push(expression);
+  }
+
+  function traverse(node) {
+    switch (node.type) {
+      case 'Element': {
+        addString(`<${node.name}`);
+
+        node.attributes.forEach((attribute) => {
+          traverse(attribute);
+        });
+        addString('>');
+
+        node.children.forEach((child) => {
+          traverse(child);
+        });
+        addString(`</${node.name}>`);
+
+        break;
+      }
+
+      case 'Text': {
+        addString(node.value);
+        break;
+      }
+
+      case 'Attribute': {
+        // addString(' class="element"');
+        break;
+      }
+
+      case 'Expression': {
+        addExpressions(node.expression);
+      }
+    }
+  }
+
+  ast.html.forEach((fragment) => {
+    traverse(fragment);
+  });
+
+  if (templateStringArr.length > 0) {
+    code.template.quasis.push(templateStringArr.join(''));
+  }
+
+  analysis.reactiveDeclarations.sort((rd1, rd2) => {
+    // rd2 depends on rd1, then rd2 should come after rd2.
+    if (rd1.assignees.some((assignee) => rd2.dependencies.includes(assignee))) {
+      return -1;
+    }
+
+    // rd1 depends on rd2, then rd1 should come after rd2.
+    if (rd2.assignees.some((assignee) => rd1.dependencies.includes(assignee))) {
+      return 1;
+    }
+
+    // Based on original order.
+    return rd1.index - rd2.index;
+  });
+
+  analysis.reactiveDeclarations.forEach(({ node, assignees }) => {
+    code.reactiveDecorations.push(escodegen.generate(node));
+
+    assignees.forEach((assignee) => {
+      code.variables.push(assignee);
+    });
+  });
+
+  const templateLiteral = {
+    type: 'TemplateLiteral',
+    expressions: code.template.expressions,
+    quasis: code.template.quasis.map((str) => ({
+      type: 'TemplateElement',
+      value: {
+        raw: str,
+        cooked: str,
+      },
+    })),
+  };
+
+  return `
+    export default function() {
+      ${escodegen.generate(ast.script)}
+      ${code.variables.map((v) => `let ${v};`).join('\n')}
+  
+      ${code.reactiveDecorations.join('\n')}
+
+      return ${escodegen.generate(templateLiteral)};
     }
   `;
 }
