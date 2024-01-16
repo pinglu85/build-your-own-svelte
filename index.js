@@ -4,18 +4,12 @@ import * as periscopic from 'periscopic';
 import * as estreeWalker from 'estree-walker';
 import * as escodegen from 'escodegen';
 
-const compileTarget = 'ssr';
 const content = fs.readFileSync('./app.svelte', 'utf-8');
 const ast = parse(content);
 const analysis = analyze(ast);
-const js =
-  compileTarget === 'ssr'
-    ? generateSSR(ast, analysis)
-    : generate(ast, analysis);
 
-// console.log(analysis);
-// fs.writeFileSync('./app.json', JSON.stringify(ast, null, 2), 'utf-8');
-fs.writeFileSync('./ssr.js', js, 'utf-8');
+fs.writeFileSync('./ssr.js', generateSSR(ast, analysis), 'utf-8');
+fs.writeFileSync('./app.js', generate(ast, analysis), 'utf-8');
 
 /**
  * Svelte Syntax
@@ -288,6 +282,8 @@ function generate(ast, analysis) {
   };
 
   let counter = 1;
+  let hydrationIndex = 0;
+  let hydrationParent = 'target';
 
   function traverse(node, parent) {
     switch (node.type) {
@@ -297,17 +293,30 @@ function generate(ast, analysis) {
         code.variables.push(variableName);
 
         code.create.push(
-          `${variableName} = document.createElement('${node.name}')`
+          `${variableName} = shouldHydrate ? ${hydrationParent}.childNodes[${hydrationIndex++}] : document.createElement('${
+            node.name
+          }')`
         );
 
         node.attributes.forEach((attribute) => {
           traverse(attribute, variableName);
         });
+
+        const currentHydrationParent = hydrationParent;
+        const currentHydrationIndex = hydrationIndex;
+        hydrationParent = variableName;
+        hydrationIndex = 0;
+
         node.children.forEach((child) => {
           traverse(child, variableName);
         });
 
-        code.create.push(`${parent}.appendChild(${variableName})`);
+        hydrationParent = currentHydrationParent;
+        hydrationIndex = currentHydrationIndex;
+
+        code.create.push(
+          `if (!shouldHydrate) ${parent}.appendChild(${variableName})`
+        );
         code.destroy.push(`${parent}.removeChild(${variableName})`);
         break;
       }
@@ -318,10 +327,16 @@ function generate(ast, analysis) {
         code.variables.push(variableName);
 
         code.create.push(
-          `${variableName} = document.createTextNode('${node.value}')`
+          `${variableName} = shouldHydrate ? ${hydrationParent}.childNodes[${hydrationIndex++}] : document.createTextNode('${
+            node.value
+          }')`
         );
+        // Skip forward for the comment node.
+        hydrationIndex++;
 
-        code.create.push(`${parent}.appendChild(${variableName})`);
+        code.create.push(
+          `if (!shouldHydrate) ${parent}.appendChild(${variableName})`
+        );
         break;
       }
 
@@ -349,10 +364,14 @@ function generate(ast, analysis) {
         code.variables.push(variableName);
 
         code.create.push(
-          `${variableName} = document.createTextNode(${expressionStr})`
+          `${variableName} = shouldHydrate ? ${hydrationParent}.childNodes[${hydrationIndex++}] : document.createTextNode(${expressionStr})`
         );
+        // Skip forward for the comment node.
+        hydrationIndex++;
 
-        code.create.push(`${parent}.appendChild(${variableName})`);
+        code.create.push(
+          `if (!shouldHydrate) ${parent}.appendChild(${variableName})`
+        );
 
         const changes = new Set();
         extractNames(node.expression).forEach((name) => {
@@ -463,6 +482,8 @@ function generate(ast, analysis) {
 
       const lifeCycle = {
         create(target) {
+          const shouldHydrate = target.childNodes.length > 0;
+
           ${code.create.join('\n')}
 
           isMounted = true;
@@ -548,6 +569,15 @@ function generateSSR(ast, analysis) {
 
       case 'Text': {
         addString(node.value);
+        // Use comment to break up a text node into multiple smaller text nodes for hydration.
+        //
+        // For instance, the SSR output of `<div>{counter} * 2 = {double}</div>` will be
+        // `<div>${counter} * 2 = ${double}</div>` and the browser will receive something like
+        // `<div>5 * 2 = 10<div>`. From the perspective of the browser, `5 * 2 = 10` is just
+        // one text, so it only creates one text node. In the client side, however, we're
+        // creating three nodes. As a result, when we want to reuse the text nodes during hydration,
+        // the other two text nodes will be `undefined`.
+        addString('<!---->');
         break;
       }
 
@@ -558,6 +588,7 @@ function generateSSR(ast, analysis) {
 
       case 'Expression': {
         addExpressions(node.expression);
+        addString('<!---->');
       }
     }
   }

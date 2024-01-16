@@ -29,43 +29,79 @@ export default function () {
 
   const lifeCycle = {
     create(target) {
-      button_1 = document.createElement('button');
+      const shouldHydrate = target.childNodes.length > 0;
+
+      button_1 = shouldHydrate
+        ? target.childNodes[0]
+        : document.createElement('button');
       button_1.addEventListener('click', decrement);
-      txt_2 = document.createTextNode('Decrement');
-      button_1.appendChild(txt_2);
-      target.appendChild(button_1);
-      div_3 = document.createElement('div');
-      txt_4 = document.createTextNode(counter);
-      div_3.appendChild(txt_4);
-      txt_5 = document.createTextNode(' * 2 = ');
-      div_3.appendChild(txt_5);
-      txt_6 = document.createTextNode(double);
-      div_3.appendChild(txt_6);
-      target.appendChild(div_3);
-      div_7 = document.createElement('div');
-      txt_8 = document.createTextNode(double);
-      div_7.appendChild(txt_8);
-      txt_9 = document.createTextNode(' * 2 = ');
-      div_7.appendChild(txt_9);
-      txt_10 = document.createTextNode(quadruple);
-      div_7.appendChild(txt_10);
-      target.appendChild(div_7);
-      div_11 = document.createElement('div');
-      txt_12 = document.createTextNode('foo = ');
-      div_11.appendChild(txt_12);
-      txt_13 = document.createTextNode(foo);
-      div_11.appendChild(txt_13);
-      target.appendChild(div_11);
-      button_14 = document.createElement('button');
+      txt_2 = shouldHydrate
+        ? button_1.childNodes[0]
+        : document.createTextNode('Decrement');
+      if (!shouldHydrate) button_1.appendChild(txt_2);
+      if (!shouldHydrate) target.appendChild(button_1);
+      div_3 = shouldHydrate
+        ? target.childNodes[1]
+        : document.createElement('div');
+      txt_4 = shouldHydrate
+        ? div_3.childNodes[0]
+        : document.createTextNode(counter);
+      if (!shouldHydrate) div_3.appendChild(txt_4);
+      txt_5 = shouldHydrate
+        ? div_3.childNodes[2]
+        : document.createTextNode(' * 2 = ');
+      if (!shouldHydrate) div_3.appendChild(txt_5);
+      txt_6 = shouldHydrate
+        ? div_3.childNodes[4]
+        : document.createTextNode(double);
+      if (!shouldHydrate) div_3.appendChild(txt_6);
+      if (!shouldHydrate) target.appendChild(div_3);
+      div_7 = shouldHydrate
+        ? target.childNodes[2]
+        : document.createElement('div');
+      txt_8 = shouldHydrate
+        ? div_7.childNodes[0]
+        : document.createTextNode(double);
+      if (!shouldHydrate) div_7.appendChild(txt_8);
+      txt_9 = shouldHydrate
+        ? div_7.childNodes[2]
+        : document.createTextNode(' * 2 = ');
+      if (!shouldHydrate) div_7.appendChild(txt_9);
+      txt_10 = shouldHydrate
+        ? div_7.childNodes[4]
+        : document.createTextNode(quadruple);
+      if (!shouldHydrate) div_7.appendChild(txt_10);
+      if (!shouldHydrate) target.appendChild(div_7);
+      div_11 = shouldHydrate
+        ? target.childNodes[3]
+        : document.createElement('div');
+      txt_12 = shouldHydrate
+        ? div_11.childNodes[0]
+        : document.createTextNode('foo = ');
+      if (!shouldHydrate) div_11.appendChild(txt_12);
+      txt_13 = shouldHydrate
+        ? div_11.childNodes[2]
+        : document.createTextNode(foo);
+      if (!shouldHydrate) div_11.appendChild(txt_13);
+      if (!shouldHydrate) target.appendChild(div_11);
+      button_14 = shouldHydrate
+        ? target.childNodes[4]
+        : document.createElement('button');
       button_14.addEventListener('click', increment);
-      txt_15 = document.createTextNode('Increment');
-      button_14.appendChild(txt_15);
-      target.appendChild(button_14);
-      button_16 = document.createElement('button');
+      txt_15 = shouldHydrate
+        ? button_14.childNodes[0]
+        : document.createTextNode('Increment');
+      if (!shouldHydrate) button_14.appendChild(txt_15);
+      if (!shouldHydrate) target.appendChild(button_14);
+      button_16 = shouldHydrate
+        ? target.childNodes[5]
+        : document.createElement('button');
       button_16.addEventListener('click', incrementFoo);
-      txt_17 = document.createTextNode('Increment Foo');
-      button_16.appendChild(txt_17);
-      target.appendChild(button_16);
+      txt_17 = shouldHydrate
+        ? button_16.childNodes[0]
+        : document.createTextNode('Increment Foo');
+      if (!shouldHydrate) button_16.appendChild(txt_17);
+      if (!shouldHydrate) target.appendChild(button_16);
 
       isMounted = true;
     },
