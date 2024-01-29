@@ -4,12 +4,25 @@ import * as periscopic from 'periscopic';
 import * as estreeWalker from 'estree-walker';
 import * as escodegen from 'escodegen';
 
-const content = fs.readFileSync('./app.svelte', 'utf-8');
-const ast = parse(content);
-const analysis = analyze(ast);
+export function buildAppJs() {
+  const content = fs.readFileSync('./app.svelte', 'utf-8');
+  fs.writeFileSync('./app.js', compile(content, 'dom'), 'utf-8');
+}
 
-fs.writeFileSync('./ssr.js', generateSSR(ast, analysis), 'utf-8');
-fs.writeFileSync('./app.js', generate(ast, analysis), 'utf-8');
+export function buildAppAndSsr() {
+  const content = fs.readFileSync('./app.svelte', 'utf-8');
+  fs.writeFileSync('./app.js', compile(content, 'dom'), 'utf-8');
+  fs.writeFileSync('./ssr.js', compile(content, 'ssr'), 'utf-8');
+}
+
+function compile(content, compileTarget) {
+  const ast = parse(content);
+  const analysis = analyze(ast);
+
+  return compileTarget === 'ssr'
+    ? generateSSR(ast, analysis)
+    : generate(ast, analysis);
+}
 
 /**
  * Svelte Syntax
@@ -404,7 +417,7 @@ function generate(ast, analysis) {
   const { rootScope, map } = analysis;
   let currentScope = rootScope;
   estreeWalker.walk(ast.script, {
-    enter(node) {
+    enter(node, parent) {
       if (map.has(node)) currentScope = map.get(node);
 
       if (
@@ -433,6 +446,26 @@ function generate(ast, analysis) {
           });
           this.skip();
         }
+      }
+
+      // Restore state when hot module reloading.
+      if (
+        node.type === 'VariableDeclarator' &&
+        parent.kind !== 'const' &&
+        currentScope.find_owner(node.id.name) === rootScope
+      ) {
+        this.replace({
+          type: 'VariableDeclarator',
+          id: node.id,
+          init: {
+            type: 'LogicalExpression',
+            left: acorn.parseExpressionAt(`restoredState?.${node.id.name}`, 0, {
+              ecmaVersion: 2022,
+            }),
+            operator: '??',
+            right: node.init,
+          },
+        });
       }
     },
 
@@ -474,16 +507,14 @@ function generate(ast, analysis) {
   // We use `escodegen.generate()` to add code in `<script>` block to the
   // function.
   return `
-    export default function() {
+    export default function({ restoredState } = {}) {
       ${escodegen.generate(ast.script)}
       ${code.variables.map((v) => `let ${v};`).join('\n')}
    
       let isMounted = false;
 
       const lifeCycle = {
-        create(target) {
-          const shouldHydrate = target.childNodes.length > 0;
-
+        create(target, shouldHydrate = target.childNodes.length > 0) {
           ${code.create.join('\n')}
 
           isMounted = true;
@@ -495,6 +526,9 @@ function generate(ast, analysis) {
           ${code.destroy.join('\n')}
 
           isMounted = false;
+        },
+        captureState() {
+          return { ${[...analysis.variables].join(',')} }
         }
       }
 

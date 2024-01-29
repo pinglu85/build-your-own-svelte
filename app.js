@@ -1,6 +1,6 @@
-export default function () {
-  let counter = 5;
-  let foo = 5;
+export default function ({ restoredState } = {}) {
+  let counter = restoredState?.counter ?? 5;
+  let foo = restoredState?.foo ?? 5;
   const increment = () => (counter++, update(['counter']));
   const decrement = () => (counter--, update(['counter']));
   const incrementFoo = () => (foo++, update(['foo']));
@@ -28,9 +28,7 @@ export default function () {
   let isMounted = false;
 
   const lifeCycle = {
-    create(target) {
-      const shouldHydrate = target.childNodes.length > 0;
-
+    create(target, shouldHydrate = target.childNodes.length > 0) {
       button_1 = shouldHydrate
         ? target.childNodes[0]
         : document.createElement('button');
@@ -134,6 +132,9 @@ export default function () {
       target.removeChild(button_16);
 
       isMounted = false;
+    },
+    captureState() {
+      return { counter, foo, increment, decrement, incrementFoo };
     },
   };
 
